@@ -5,7 +5,7 @@ using UnityEngine;
 public class InputScrip : MonoBehaviour
 {
     public Transform target;
-    public float timespeed = 1;
+    public float timespeed;
 
     private Camera cam;
 
@@ -25,9 +25,18 @@ public class InputScrip : MonoBehaviour
     private Vector3 mouseVelLast;
     private Vector3 mouseAccel;
 
+    private float offset = 2; // 2 units offset
+
+    private Vector3 force;
+    private float mass = 0.1F;   // mass of target
+    private float inertia = 0.1F; // rotaional mass
+    private float angularspeed = 0;
+    private float angle = 0;
+    private float angularacceleration = 0;
+
+
     private Vector3 vectrotate;
     Quaternion quatrotate;
-    
 
     void Start()
     {
@@ -36,6 +45,8 @@ public class InputScrip : MonoBehaviour
         vectrotate.y = 0;
         vectrotate.z = 0;
         quatrotate = Quaternion.Euler(0, 0, 0);
+        timespeed = 1F;
+        friction = 100;
     }
 
     // Update is called once per frame
@@ -48,8 +59,7 @@ public class InputScrip : MonoBehaviour
         float ypos = Input.mousePosition.y;
 
         mousePosLast = mousePos;
-        mousePos.x = xpos;
-        mousePos.y = ypos;
+        mousePos = cam.ScreenToWorldPoint(new Vector3(xpos, ypos, cam.nearClipPlane));
 
         // calk velocity of input
         mouseVelLast = mouseVel;
@@ -59,22 +69,37 @@ public class InputScrip : MonoBehaviour
         mouseAccel = (mouseVel - mouseVelLast) / step;
 
         // speed, acceleration, force friction and torque are guing into physical model
-        // we need to split acceleration components in axis of target (Cog) 
+        // we need to split acceleration components in axis of target (CoG)
+        // we do that by rotating the axis of the applied force by the amount of the target 
+        // rotation so the components are aligned and othogonal with the target
         
-        
-        vectrotate.z +=1;
-        //target.transform.Rotate(rotate);
+        // calk force F=m*a
+        force.x = mouseAccel.x * mass;
+        force.y = mouseAccel.y * mass;
 
-        // calk force 
+        // calk torque = (F)x(r)
+        angle = target.eulerAngles.z * Mathf.Deg2Rad;
+        Vector3 forceComponents = Vector3Extension.Rotate(force, angle);
+        float torque = forceComponents.x * offset; // only this component is adding spin to the target.
+        // calc angular acceleration     Torque = inertia * omega' 
+        angularacceleration = torque / inertia;
 
+        // dont forget dt when integrating (this is no simulation but anyways)
+        angularspeed += angularacceleration * step;
+        angle += angularspeed * step;
 
-        
-        // calk torque
-        
-
+        // also reduce angular speed by friction linearly
+        if (angularspeed > 0)
+        {
+            angularspeed -= friction * step;
+        } else if (angularspeed < 0)
+        {
+            angularspeed += friction * step;
+        }
+         
         //update the position
 
-        Quaternion tempquatrotate = Quaternion.Euler(vectrotate);
+        Quaternion tempquatrotate = Quaternion.Euler(0,0, angle* Mathf.Rad2Deg);
         target.rotation = tempquatrotate;
         // transform.position = cam.ScreenToWorldPoint(new Vector3(xpos, ypos, cam.nearClipPlane));
         target.position = cam.ScreenToWorldPoint(new Vector3(xpos, ypos, cam.nearClipPlane));
@@ -95,11 +120,15 @@ public class InputScrip : MonoBehaviour
 
         point = cam.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, cam.nearClipPlane));
 
-        GUILayout.BeginArea(new Rect(20, 20, 250, 120));
-        GUILayout.Label("Screen pixels:  " + cam.pixelWidth + ":" + cam.pixelHeight);
-        GUILayout.Label("Mouse position: " + mousePos);
-        GUILayout.Label("World position: " + point.ToString("F3"));
-        //GUILayout.Label("Speed:          " + velocity.ToString("F3"));
+        GUILayout.BeginArea(new Rect(20, 20, 350, 220));
+        GUILayout.Label("Screen pixels:         " + cam.pixelWidth + ":" + cam.pixelHeight);
+        GUILayout.Label("Mouse Pixel Position:  " + mousePos);
+        GUILayout.Label("Mouse World Position:  " + point.ToString("F3"));
+        GUILayout.Label("Mouse World Speed:     " + mouseVel.ToString("F3"));
+        GUILayout.Label("Mouse World Accel.:    " + mouseAccel.ToString("F3"));
+        GUILayout.Label("Target World Rot.:     " + target.rotation.ToString("F3") + angle);
+        GUILayout.Label("Target World RotSpeed: " + angularspeed);
+        GUILayout.Label("Target WorldRotAccel.: " + angularacceleration);
         GUILayout.EndArea();
     }
 }
